@@ -27,10 +27,9 @@ export class BranchScopeGuard implements CanActivate {
         throw new ForbiddenException('Quản lý chi nhánh chưa được gán vào chi nhánh nào');
       }
 
-      // Kiểm tra branchId từ params (:branchId hoặc :id), query, hoặc body
+      // Kiểm tra branchId từ params (:branchId), query (?branchId=), hoặc body ({ branchId })
       const targetBranchId =
         request.params?.branchId ??
-        request.params?.id ??
         request.query?.branchId ??
         request.body?.branchId;
 
@@ -40,9 +39,18 @@ export class BranchScopeGuard implements CanActivate {
         );
       }
 
-      // Tự động gán branchId vào query filter nếu chưa có
-      if (!request.query?.branchId && !request.params?.branchId) {
-        request.query = { ...request.query, branchId: user.branchId };
+      // Gán branchId vào query filter nếu chưa có
+      if (request.query && !request.query.branchId && !request.params?.branchId) {
+        try {
+          request.query.branchId = user.branchId;
+        } catch {
+          // Tránh lỗi setter nếu req.query là getter thuần túy trong Express 5
+        }
+      }
+
+      // Gán branchId vào body nếu chưa có (cho POST)
+      if (request.body && typeof request.body === 'object' && !request.body.branchId) {
+        request.body.branchId = user.branchId;
       }
 
       return true;
