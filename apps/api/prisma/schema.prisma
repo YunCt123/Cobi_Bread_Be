@@ -13,15 +13,55 @@ enum Role {
   CUSTOMER
 }
 
+enum StorageType {
+  FRESH
+  FROZEN
+  AMBIENT
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  CONFIRMED
+  PROCESSING
+  SHIPPING
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  COD
+  VNPAY
+  MOMO
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum DeliveryType {
+  EXPRESS_NOW
+  SCHEDULED
+  PICKUP
+}
+
 model Branch {
-  id        String   @id @default(uuid())
-  name      String
-  address   String
-  city      String
-  openHours String   @map("open_hours")
-  phone     String
-  users     User[]
-  createdAt DateTime @default(now()) @map("created_at")
+  id               String           @id @default(uuid())
+  name             String
+  nameEn           String?          @map("name_en")
+  address          String
+  addressEn        String?          @map("address_en")
+  city             String
+  cityEn           String?          @map("city_en")
+  openHours        String           @map("open_hours")
+  phone            String
+  users            User[]
+  inventoryBatches InventoryBatch[]
+  orders           Order[]
+  createdAt        DateTime         @default(now()) @map("created_at")
 
   @@map("branches")
 }
@@ -34,7 +74,116 @@ model User {
   role         Role     @default(CUSTOMER)
   branchId     String?  @map("branch_id")
   branch       Branch?  @relation(fields: [branchId], references: [id])
+  orders       Order[]
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("users")
+}
+
+model Category {
+  id           String     @id @default(uuid())
+  name         String
+  nameEn       String?    @map("name_en")
+  slug         String     @unique
+  parentId     String?    @map("parent_id")
+  parent       Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     Category[] @relation("CategoryHierarchy")
+  displayOrder Int        @default(0) @map("display_order")
+  products     Product[]
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@map("categories")
+}
+
+model Product {
+  id                   String           @id @default(uuid())
+  sku                  String           @unique
+  name                 String
+  nameEn               String?          @map("name_en")
+  slug                 String           @unique
+  categoryId           String           @map("category_id")
+  category             Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  price                Int
+  netWeightG           Int              @map("net_weight_g")
+  storageType          StorageType      @map("storage_type")
+  shelfLifeFrozenDays  Int?             @map("shelf_life_frozen_days")
+  shelfLifeChilledDays Int              @map("shelf_life_chilled_days")
+  isB2b                Boolean          @default(false) @map("is_b2b")
+  ingredients          String           @db.Text
+  ingredientsEn        String?          @map("ingredients_en") @db.Text
+  nutritionJson        Json?            @map("nutrition_json")
+  images               Json             @default("[]")
+  description          String?          @db.Text
+  descriptionEn        String?          @map("description_en") @db.Text
+  isActive             Boolean          @default(true) @map("is_active")
+  inventoryBatches     InventoryBatch[]
+  orderItems           OrderItem[]
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  @@index([categoryId])
+  @@index([storageType])
+  @@index([isB2b])
+  @@index([isActive])
+  @@map("products")
+}
+
+model InventoryBatch {
+  id             String      @id @default(uuid())
+  branchId       String      @map("branch_id")
+  branch         Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  productId      String      @map("product_id")
+  product        Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batchCode      String      @map("batch_code")
+  quantity       Int
+  manufacturedAt DateTime    @map("manufactured_at")
+  expiresAt      DateTime    @map("expires_at")
+  orderItems     OrderItem[]
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  @@index([branchId, productId, expiresAt])
+  @@map("inventory_batches")
+}
+
+model Order {
+  id              String        @id @default(uuid())
+  orderCode       String        @unique @map("order_code")
+  userId          String?       @map("user_id")
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  branchId        String        @map("branch_id")
+  branch          Branch        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  status          OrderStatus   @default(PENDING)
+  paymentMethod   PaymentMethod @map("payment_method")
+  paymentStatus   PaymentStatus @default(UNPAID) @map("payment_status")
+  deliveryType    DeliveryType  @map("delivery_type")
+  totalAmount     Int           @map("total_amount")
+  shippingAddress Json          @map("shipping_address")
+  note            String?       @db.Text
+  items           OrderItem[]
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  @@index([branchId, status])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String          @id @default(uuid())
+  orderId   String          @map("order_id")
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String          @map("product_id")
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batchId   String?         @map("batch_id")
+  batch     InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  quantity  Int
+  unitPrice Int             @map("unit_price")
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
 }
