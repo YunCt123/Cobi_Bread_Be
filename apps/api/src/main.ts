@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module.js';
 import { getCorsOptions } from './common/config/cors.config.js';
+import { setupSwagger } from './common/swagger/setup-swagger.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -12,6 +13,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  setupSwagger(app);
   app.enableShutdownHooks();
   await app.listen(process.env.PORT ?? 3001);
 }

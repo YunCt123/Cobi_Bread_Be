@@ -1,4 +1,12 @@
-import { PrismaClient, Role, StorageType } from '@prisma/client';
+import {
+  DeliveryType,
+  OrderStatus,
+  PaymentMethod,
+  PaymentStatus,
+  PrismaClient,
+  Role,
+  StorageType,
+} from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -90,33 +98,56 @@ async function main() {
 
   const q7BranchId = branchMap['Cobi Bread Tower'];
 
-  // 3. Seed 3 tài khoản mẫu
+  // 3. Seed tài khoản mẫu
   const usersData = [
     {
       email: 'admin@cobibread.com',
       fullName: 'Admin Cobi Bread',
+      phone: '0901234567',
+      isActive: true,
+      addresses: undefined,
       role: Role.ADMIN,
       branchId: null,
     },
     {
       email: 'manager.q7@cobibread.com',
       fullName: 'Quản lý Cobi Tower Q7',
+      phone: '0902345678',
+      isActive: true,
+      addresses: undefined,
       role: Role.BRANCH_MANAGER,
       branchId: q7BranchId,
     },
     {
       email: 'customer@cobibread.com',
       fullName: 'Khách hàng Cobi Bread',
+      phone: '0909888777',
+      isActive: true,
+      addresses: [
+        {
+          id: 'addr-1',
+          recipientName: 'Khách hàng Cobi Bread',
+          phone: '0909888777',
+          address: '123 Nguyễn Lương Bằng, Phường Tân Phú, Quận 7',
+          city: 'TP. Hồ Chí Minh',
+          isDefault: true,
+        },
+      ],
       role: Role.CUSTOMER,
       branchId: null,
     },
   ];
+
+  const userMap: Record<string, string> = {};
 
   for (const user of usersData) {
     const upserted = await prisma.user.upsert({
       where: { email: user.email },
       update: {
         fullName: user.fullName,
+        phone: user.phone,
+        isActive: user.isActive,
+        ...(user.addresses && { addresses: user.addresses }),
         role: user.role,
         branchId: user.branchId,
         passwordHash,
@@ -124,12 +155,16 @@ async function main() {
       create: {
         email: user.email,
         fullName: user.fullName,
+        phone: user.phone,
+        isActive: user.isActive,
+        ...(user.addresses && { addresses: user.addresses }),
         role: user.role,
         branchId: user.branchId,
         passwordHash,
       },
     });
 
+    userMap[user.email] = upserted.id;
     console.log(
       `  ✓ Đã seed tài khoản: ${upserted.email} | Role: ${upserted.role} | BranchId: ${upserted.branchId ?? 'N/A'}`,
     );
@@ -657,6 +692,173 @@ async function main() {
       console.log(`  ✓ Đã tạo lô tồn kho: ${b.batchCode} (${b.quantity} cái, HSD: ${b.expiresAt.toISOString().slice(0, 10)})`);
     }
   }
+
+  // 7. Seed 28 đơn hàng giả lập rải đều trong 30 ngày gần nhất trên cả 5 chi nhánh
+  console.log('\n🧾 Đang seed 28 đơn hàng mẫu trong 30 ngày gần nhất...');
+  const branchNames = Object.keys(branchMap);
+  const customerId = userMap['customer@cobibread.com'] ?? null;
+
+  const productPriceBySku: Record<string, number> = {};
+  for (const p of productsData) {
+    productPriceBySku[p.sku] = p.price;
+  }
+
+  const sampleOrderSpecs: Array<{
+    code: string;
+    daysAgo: number;
+    branchIdx: number;
+    status: OrderStatus;
+    paymentMethod: PaymentMethod;
+    deliveryType: DeliveryType;
+    items: Array<{ sku: string; qty: number }>;
+  }> = [
+    { code: 'CB-SEED-2026-0001', daysAgo: 0, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BMKT-PM-75', qty: 4 }, { sku: 'CB-PKT-XXPM-100', qty: 2 }] },
+    { code: 'CB-SEED-2026-0002', daysAgo: 0, branchIdx: 0, status: OrderStatus.PENDING, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BMKT-MC-75', qty: 3 }, { sku: 'CB-BBL-ST-120', qty: 2 }] },
+    { code: 'CB-SEED-2026-0003', daysAgo: 0, branchIdx: 0, status: OrderStatus.SHIPPING, paymentMethod: PaymentMethod.MOMO, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-DL-CR-B2C-240', qty: 2 }, { sku: 'CB-SNK-BQTR-150', qty: 1 }] },
+    { code: 'CB-SEED-2026-0004', daysAgo: 1, branchIdx: 1, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.BANK_TRANSFER, deliveryType: DeliveryType.SCHEDULED, items: [{ sku: 'CB-B2B-HB-70X20', qty: 2 }] },
+    { code: 'CB-SEED-2026-0005', daysAgo: 1, branchIdx: 2, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.PICKUP, items: [{ sku: 'CB-BMKT-SC-75', qty: 5 }, { sku: 'CB-BMQ-HP-60', qty: 4 }] },
+    { code: 'CB-SEED-2026-0006', daysAgo: 2, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-SET-CZMN-PRE', qty: 1 }, { sku: 'CB-BMKT-PM-75', qty: 3 }] },
+    { code: 'CB-SEED-2026-0007', daysAgo: 3, branchIdx: 3, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.MOMO, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-PKT-GTY-100', qty: 4 }, { sku: 'CB-KB-MFVQ-90', qty: 3 }] },
+    { code: 'CB-SEED-2026-0008', daysAgo: 4, branchIdx: 4, status: OrderStatus.CANCELLED, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.SCHEDULED, items: [{ sku: 'CB-DL-BR-B2C-300', qty: 2 }] },
+    { code: 'CB-SEED-2026-0009', daysAgo: 5, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BMKT-PM-75', qty: 6 }, { sku: 'CB-BMKT-MC-75', qty: 4 }] },
+    { code: 'CB-SEED-2026-0010', daysAgo: 6, branchIdx: 2, status: OrderStatus.SHIPPING, paymentMethod: PaymentMethod.MOMO, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-SNK-BQTR-150', qty: 3 }, { sku: 'CB-SNK-BMGB-80', qty: 4 }] },
+    { code: 'CB-SEED-2026-0011', daysAgo: 7, branchIdx: 1, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.BANK_TRANSFER, deliveryType: DeliveryType.SCHEDULED, items: [{ sku: 'CB-B2B-BG-50X30', qty: 2 }] },
+    { code: 'CB-SEED-2026-0012', daysAgo: 8, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.PICKUP, items: [{ sku: 'CB-PKT-XXPM-100', qty: 5 }, { sku: 'CB-BBL-ST-120', qty: 3 }] },
+    { code: 'CB-SEED-2026-0013', daysAgo: 9, branchIdx: 3, status: OrderStatus.PENDING, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BMKT-SC-75', qty: 4 }, { sku: 'CB-BMQ-HP-60', qty: 5 }] },
+    { code: 'CB-SEED-2026-0014', daysAgo: 10, branchIdx: 4, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-SET-CZMN-PRE', qty: 2 }] },
+    { code: 'CB-SEED-2026-0015', daysAgo: 11, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.MOMO, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-DL-CR-B2C-240', qty: 3 }, { sku: 'CB-BMKT-PM-75', qty: 4 }] },
+    { code: 'CB-SEED-2026-0016', daysAgo: 12, branchIdx: 2, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.PICKUP, items: [{ sku: 'CB-KB-MFVQ-90', qty: 5 }, { sku: 'CB-PKT-GTY-100', qty: 3 }] },
+    { code: 'CB-SEED-2026-0017', daysAgo: 14, branchIdx: 1, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.BANK_TRANSFER, deliveryType: DeliveryType.SCHEDULED, items: [{ sku: 'CB-B2B-HB-70X20', qty: 3 }] },
+    { code: 'CB-SEED-2026-0018', daysAgo: 15, branchIdx: 0, status: OrderStatus.CANCELLED, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BMKT-MC-75', qty: 2 }] },
+    { code: 'CB-SEED-2026-0019', daysAgo: 16, branchIdx: 3, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BBL-ST-120', qty: 4 }, { sku: 'CB-SNK-BQTR-150', qty: 2 }] },
+    { code: 'CB-SEED-2026-0020', daysAgo: 18, branchIdx: 4, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.MOMO, deliveryType: DeliveryType.PICKUP, items: [{ sku: 'CB-DL-BR-B2C-300', qty: 2 }, { sku: 'CB-BMQ-HP-60', qty: 6 }] },
+    { code: 'CB-SEED-2026-0021', daysAgo: 19, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-SET-CZMN-PRE', qty: 1 }, { sku: 'CB-PKT-XXPM-100', qty: 4 }] },
+    { code: 'CB-SEED-2026-0022', daysAgo: 21, branchIdx: 2, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BMKT-PM-75', qty: 5 }, { sku: 'CB-BMKT-SC-75', qty: 4 }] },
+    { code: 'CB-SEED-2026-0023', daysAgo: 22, branchIdx: 1, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.BANK_TRANSFER, deliveryType: DeliveryType.SCHEDULED, items: [{ sku: 'CB-B2B-BG-50X30', qty: 1 }, { sku: 'CB-DL-CR-B2C-240', qty: 2 }] },
+    { code: 'CB-SEED-2026-0024', daysAgo: 24, branchIdx: 3, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.MOMO, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-PKT-GTY-100', qty: 4 }, { sku: 'CB-SNK-BMGB-80', qty: 5 }] },
+    { code: 'CB-SEED-2026-0025', daysAgo: 25, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-BMKT-MC-75', qty: 6 }, { sku: 'CB-KB-MFVQ-90', qty: 3 }] },
+    { code: 'CB-SEED-2026-0026', daysAgo: 27, branchIdx: 4, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.COD, deliveryType: DeliveryType.PICKUP, items: [{ sku: 'CB-BBL-ST-120', qty: 3 }, { sku: 'CB-BMKT-PM-75', qty: 4 }] },
+    { code: 'CB-SEED-2026-0027', daysAgo: 28, branchIdx: 2, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.VNPAY, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-SNK-BQTR-150', qty: 2 }, { sku: 'CB-PKT-XXPM-100', qty: 3 }] },
+    { code: 'CB-SEED-2026-0028', daysAgo: 29, branchIdx: 0, status: OrderStatus.DELIVERED, paymentMethod: PaymentMethod.MOMO, deliveryType: DeliveryType.EXPRESS_NOW, items: [{ sku: 'CB-SET-CZMN-PRE', qty: 1 }, { sku: 'CB-DL-CR-B2C-240', qty: 2 }] },
+  ];
+
+  // Xóa các đơn hàng seed cũ (CB-SEED-2026-*) để tạo lại đúng ngày tương đối (30 ngày gần nhất)
+  await prisma.order.deleteMany({
+    where: {
+      orderCode: {
+        startsWith: 'CB-SEED-2026-',
+      },
+    },
+  });
+
+  for (const spec of sampleOrderSpecs) {
+    const branchName = branchNames[spec.branchIdx % branchNames.length];
+    const branchId = branchMap[branchName];
+    if (!branchId) continue;
+
+    const createdAt = new Date(now.getTime() - spec.daysAgo * dayMs);
+    const itemsData = spec.items
+      .map((it) => {
+        const productId = productMap[it.sku];
+        const unitPrice = productPriceBySku[it.sku] ?? 30000;
+        if (!productId) return null;
+        return {
+          productId,
+          quantity: it.qty,
+          unitPrice,
+          createdAt,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    if (itemsData.length === 0) continue;
+
+    const totalAmount = itemsData.reduce(
+      (sum, it) => sum + it.quantity * it.unitPrice,
+      0,
+    );
+
+    const paymentStatus =
+      spec.status === OrderStatus.DELIVERED
+        ? PaymentStatus.PAID
+        : spec.status === OrderStatus.CANCELLED
+          ? PaymentStatus.REFUNDED
+          : PaymentStatus.UNPAID;
+
+    await prisma.order.create({
+      data: {
+        orderCode: spec.code,
+        userId: customerId,
+        branchId,
+        status: spec.status,
+        paymentMethod: spec.paymentMethod,
+        paymentStatus,
+        deliveryType: spec.deliveryType,
+        totalAmount,
+        shippingAddress: {
+          recipientName: 'Khách hàng Cobi Bread',
+          phone: '0909888777',
+          address: '69 Hoàng Văn Thái, Quận 7, TP.HCM',
+        },
+        note: 'Đơn hàng mẫu phục vụ Dashboard Analytics',
+        createdAt,
+        updatedAt: createdAt,
+        items: {
+          create: itemsData,
+        },
+      },
+    });
+  }
+  console.log(`  ✓ Đã seed ${sampleOrderSpecs.length} đơn hàng rải đều 30 ngày trên 5 chi nhánh`);
+
+  // 8. Seed ~210 bản ghi TrafficLog trong 30 ngày gần nhất
+  console.log('\n📈 Đang seed ~210 bản ghi TrafficLog trong 30 ngày gần nhất...');
+  await prisma.trafficLog.deleteMany({
+    where: {
+      sessionId: {
+        startsWith: 'seed-sess-',
+      },
+    },
+  });
+
+  const samplePaths = [
+    '/',
+    '/products',
+    '/products/banh-mi-kem-tuoi-pho-mai-75g',
+    '/products/banh-mi-kem-tuoi-matcha-75g',
+    '/products/pocket-toast-xuc-xich-pho-mai-100g',
+    '/products/set-qua-tang-cozy-moon-premium',
+    '/branches',
+    '/cart',
+    '/checkout',
+  ];
+
+  const trafficLogsToCreate: Array<{
+    path: string;
+    sessionId: string;
+    createdAt: Date;
+  }> = [];
+
+  for (let day = 0; day < 30; day++) {
+    // Mỗi ngày từ 5 đến 10 lượt truy cập (tổng ~210 bản ghi)
+    const visitsCount = 5 + ((day * 3 + 2) % 6);
+    for (let v = 0; v < visitsCount; v++) {
+      const visitTime = new Date(
+        now.getTime() - day * dayMs - v * 35 * 60 * 1000,
+      );
+      const path = samplePaths[(day + v) % samplePaths.length];
+      trafficLogsToCreate.push({
+        path,
+        sessionId: `seed-sess-d${day}-v${v}`,
+        createdAt: visitTime,
+      });
+    }
+  }
+
+  await prisma.trafficLog.createMany({
+    data: trafficLogsToCreate,
+  });
+  console.log(`  ✓ Đã seed ${trafficLogsToCreate.length} bản ghi TrafficLog`);
 
   console.log('✅ Seed toàn bộ dữ liệu Cobi Bread (Bilingual) thành công!');
 }

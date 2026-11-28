@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../dist/app.module.js';
 import { getCorsOptions } from '../dist/common/config/cors.config.js';
+import { setupSwagger } from '../dist/common/swagger/setup-swagger.js';
 
 type RequestHandler = (req: IncomingMessage, res: ServerResponse) => unknown;
 
@@ -20,6 +21,7 @@ async function getHandler(): Promise<RequestHandler> {
           transform: true,
         }),
       );
+      setupSwagger(app);
       await app.init();
       return app.getHttpAdapter().getInstance() as RequestHandler;
     })().catch((error: unknown) => {

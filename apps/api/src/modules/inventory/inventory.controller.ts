@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { InventoryService } from './inventory.service.js';
 import { QueryBatchesDto } from './dto/query-batches.dto.js';
@@ -23,11 +24,16 @@ import { Roles } from '../../common/decorators/roles.decorator.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { CurrentUserPayload } from '../../common/decorators/current-user.decorator.js';
 
+@ApiTags('Inventory')
 @Controller('inventory')
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Get('availability')
+  @ApiOperation({
+    summary:
+      'Kiểm tra tồn kho khả dụng (chưa hết hạn) của sản phẩm tại chi nhánh (Public)',
+  })
   async getAvailability(@Query() query: AvailabilityQueryDto) {
     return this.inventoryService.getAvailability(query);
   }
@@ -35,6 +41,11 @@ export class InventoryController {
   @Get('batches')
   @UseGuards(JwtAuthGuard, RolesGuard, BranchScopeGuard)
   @Roles(Role.ADMIN, Role.BRANCH_MANAGER)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Danh sách lô hàng FEFO (hỗ trợ lọc branchId, productId, expiringWithinDays)',
+  })
   async findBatches(
     @Query() query: QueryBatchesDto,
     @CurrentUser() user: CurrentUserPayload,
@@ -49,7 +60,9 @@ export class InventoryController {
   @Post('batches')
   @UseGuards(JwtAuthGuard, RolesGuard, BranchScopeGuard)
   @Roles(Role.ADMIN, Role.BRANCH_MANAGER)
+  @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Nhập lô hàng tồn kho mới (ADMIN / BRANCH_MANAGER)' })
   async createBatch(
     @Body() dto: CreateBatchDto,
     @CurrentUser() user: CurrentUserPayload,
@@ -64,6 +77,10 @@ export class InventoryController {
   @Patch('batches/:id')
   @UseGuards(JwtAuthGuard, RolesGuard, BranchScopeGuard)
   @Roles(Role.ADMIN, Role.BRANCH_MANAGER)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cập nhật số lượng hoặc hạn dùng lô hàng (ADMIN / BRANCH_MANAGER)',
+  })
   async updateBatch(
     @Param('id') id: string,
     @Body() dto: UpdateBatchDto,
