@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -9,7 +10,7 @@ import { Role } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { RegisterDto, LoginDto } from './dto/auth.dto.js';
-import { JwtPayload } from './jwt.strategy.js';
+import type { JwtPayload } from './jwt.strategy.js';
 
 @Injectable()
 export class AuthService {
@@ -43,6 +44,9 @@ export class AuthService {
         id: true,
         email: true,
         fullName: true,
+        phone: true,
+        isActive: true,
+        addresses: true,
         role: true,
         branchId: true,
         createdAt: true,
@@ -65,7 +69,9 @@ export class AuthService {
           select: {
             id: true,
             name: true,
+            nameEn: true,
             city: true,
+            cityEn: true,
           },
         },
       },
@@ -75,9 +81,18 @@ export class AuthService {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      dto.password,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
+    }
+
+    if (user.isActive === false) {
+      throw new ForbiddenException(
+        'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.',
+      );
     }
 
     const payload: JwtPayload = {
@@ -105,16 +120,24 @@ export class AuthService {
         id: true,
         email: true,
         fullName: true,
+        phone: true,
+        isActive: true,
+        addresses: true,
         role: true,
         branchId: true,
         branch: {
           select: {
             id: true,
             name: true,
+            nameEn: true,
             address: true,
+            addressEn: true,
             city: true,
+            cityEn: true,
             openHours: true,
             phone: true,
+            mapEmbedUrl: true,
+            isActive: true,
           },
         },
         createdAt: true,
